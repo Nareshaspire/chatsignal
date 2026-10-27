@@ -1,0 +1,19 @@
+{
+  "name": "chatsignal",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces",
+    "dev:api": "npm run dev --workspace=chatsignal-api",
+    "dev:web": "npm run dev --workspace=chatsignal-web",
+    "build": "npm run build --workspaces",
+    "start": "npm run start --workspace=chatsignal-api",
+    "test": "npm run test --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
