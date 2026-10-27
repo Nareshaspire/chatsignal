@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Header } from "./components/Header";
+import { QuickStartBanner } from "./components/QuickStartBanner";
 import { TopSignalCard } from "./components/TopSignalCard";
 import { QueuedSignalsList } from "./components/QueuedSignalsList";
 import { RawChatStream } from "./components/RawChatStream";
@@ -21,6 +22,7 @@ export const App: React.FC = () => {
   const [isDockMode, setIsDockMode] = useState(false);
   const [selectedInspectorSignal, setSelectedInspectorSignal] = useState<TopicCluster | null>(null);
   const [showRecapModal, setShowRecapModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [metrics, setMetrics] = useState<PipelineMetrics>({
     totalIngested: 0,
@@ -34,6 +36,15 @@ export const App: React.FC = () => {
 
   const wsRef = useRef<WebSocket | null>(null);
   const lastSignalIdRef = useRef<string | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = (msg: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToastMessage(msg);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 2400);
+  };
 
   // Send action over WebSocket
   const sendWsAction = useCallback((action: any) => {
@@ -45,27 +56,36 @@ export const App: React.FC = () => {
   // Handle Resolving Top Signal
   const handleResolveSignal = useCallback((id: string, resolution: "answered" | "dismissed") => {
     sendWsAction({ type: "RESOLVE_SIGNAL", signalId: id, resolution });
+    if (resolution === "answered") {
+      showToast("✓ Question Answered! Community connection saved.");
+    } else {
+      showToast("✕ Signal Dismissed.");
+    }
   }, [sendWsAction]);
 
   // Handle Pinning
   const handlePinSignal = useCallback((id: string, pinned: boolean) => {
     sendWsAction({ type: "PIN_SIGNAL", signalId: id, pinned });
+    showToast(pinned ? "📌 Signal Pinned to Top." : "Signal Unpinned.");
   }, [sendWsAction]);
 
   // Handle Triggering Scenarios
   const handleTriggerScenario = (scenario: "boss_fight" | "raid_influx" | "technical_alert" | "chill_qna") => {
     setActiveChannel(`SIM: ${scenario.toUpperCase()}`);
     sendWsAction({ type: "TRIGGER_SCENARIO", scenario });
+    showToast(`⚡ Started scenario: ${scenario.replace("_", " ").toUpperCase()}`);
   };
 
   // Handle Custom Message Injection
   const handleInjectMessage = (message: string, isFirstTimer: boolean) => {
     sendWsAction({ type: "INJECT_MESSAGE", message, isFirstTimer });
+    showToast(`📩 Injected message: "${message.substring(0, 30)}..."`);
   };
 
   // Handle Velocity Adjustment
   const handleSetVelocity = (intervalMs: number) => {
     sendWsAction({ type: "SET_VELOCITY", intervalMs });
+    showToast(`⚡ Chat speed set to ${intervalMs}ms`);
   };
 
   // Handle Twitch Connection
@@ -77,14 +97,17 @@ export const App: React.FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channel })
       });
+      showToast(`🔴 Connected to live Twitch chat on #${channel}!`);
     } catch (err) {
       console.error("Failed to connect to Twitch channel:", err);
+      showToast("⚠️ Failed to connect to Twitch channel.");
     }
   };
 
   // Handle Clear
   const handleClear = () => {
     sendWsAction({ type: "CLEAR_SIGNALS" });
+    showToast("Cleared all active signals.");
   };
 
   // WebSocket Connection Lifecycle
@@ -156,7 +179,6 @@ export const App: React.FC = () => {
         return;
       }
 
-      // Ignore hotkeys if user is currently typing in an input
       const target = e.target as HTMLElement;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) {
         return;
@@ -193,6 +215,12 @@ export const App: React.FC = () => {
 
       <main className="main-grid">
         <section className="attention-area" id="streamer-attention-area">
+          {/* Quick Testing Guide Banner */}
+          {!isDockMode && (
+            <QuickStartBanner onTriggerScenario={handleTriggerScenario} />
+          )}
+
+          {/* Hero Top Signal Card */}
           <TopSignalCard
             signal={topSignal}
             onResolve={handleResolveSignal}
@@ -200,12 +228,14 @@ export const App: React.FC = () => {
             onInspectAi={(sig) => setSelectedInspectorSignal(sig)}
           />
 
+          {/* Secondary Queued Signals */}
           <QueuedSignalsList
             signals={queuedSignals}
             onSelect={(sig) => setTopSignal(sig)}
             onDismiss={(id) => handleResolveSignal(id, "dismissed")}
           />
 
+          {/* Modular Testing Hub (1-Click Scenarios, Custom Sandbox, Twitch Live) */}
           <SimulationControls
             onTriggerScenario={handleTriggerScenario}
             onConnectTwitch={handleConnectTwitch}
@@ -223,6 +253,13 @@ export const App: React.FC = () => {
           />
         )}
       </main>
+
+      {/* Action Toast Feedback */}
+      {toastMessage && (
+        <div className="action-toast-pill" id="action-toast">
+          {toastMessage}
+        </div>
+      )}
 
       {/* AI Inspector Modal */}
       {selectedInspectorSignal && (
