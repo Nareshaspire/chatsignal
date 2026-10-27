@@ -43,15 +43,17 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
     onSetVelocity(ms);
   };
 
+  const isRealTimeTwitch = !activeChannel.startsWith("SIM");
+
   return (
     <div className="sim-bar" id="simulation-controls-bar">
       {/* Scenario Triggers */}
       <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-secondary)" }}>
-          DEMO SCENARIOS ({activeChannel})
+        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: isRealTimeTwitch ? "#34D399" : "var(--text-secondary)" }}>
+          {isRealTimeTwitch ? `🔴 REAL-TIME TWITCH (#${activeChannel.toUpperCase()})` : `DEMO SCENARIOS (${activeChannel})`}
         </span>
         <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
-          Test triage without needing a live broadcast
+          {isRealTimeTwitch ? "Receiving live IRC stream from Twitch" : "Simulating scenarios with Stage 1 & Stage 2 triage"}
         </span>
       </div>
 
@@ -93,31 +95,57 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
         </button>
       </div>
 
-      {/* Chat Velocity Selector */}
-      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-        <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>SPEED:</span>
-        <button
-          className={`sim-btn ${velocity === 2200 ? "active" : ""}`}
-          onClick={() => handleVelocityChange(2200)}
-          style={{ padding: "4px 8px", fontSize: "0.72rem" }}
-        >
-          Slow
-        </button>
-        <button
-          className={`sim-btn ${velocity === 1200 ? "active" : ""}`}
-          onClick={() => handleVelocityChange(1200)}
-          style={{ padding: "4px 8px", fontSize: "0.72rem" }}
-        >
-          Normal
-        </button>
-        <button
-          className={`sim-btn ${velocity === 450 ? "active" : ""}`}
-          onClick={() => handleVelocityChange(450)}
-          style={{ padding: "4px 8px", fontSize: "0.72rem", color: "var(--accent-rose)" }}
-        >
-          🔥 Raid Speed
-        </button>
+      {/* Real-Time Live Channels Quick Preset Chips */}
+      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+        <span style={{ fontSize: "0.72rem", color: "var(--accent-rose)", fontWeight: 700 }}>
+          LIVE:
+        </span>
+        {["tarik", "kaicenat", "shroud", "eslcs"].map((chan) => (
+          <button
+            key={chan}
+            type="button"
+            className={`sim-btn ${activeChannel.toLowerCase() === chan ? "active" : ""}`}
+            style={{
+              padding: "4px 7px",
+              fontSize: "0.72rem",
+              borderColor: activeChannel.toLowerCase() === chan ? "var(--accent-emerald)" : undefined,
+              color: activeChannel.toLowerCase() === chan ? "#34D399" : undefined
+            }}
+            onClick={() => onConnectTwitch(chan)}
+            title={`Connect directly to live real-time Twitch chat on #${chan}`}
+          >
+            #{chan}
+          </button>
+        ))}
       </div>
+
+      {/* Chat Velocity Selector (when simulator is running) */}
+      {!isRealTimeTwitch && (
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>SPEED:</span>
+          <button
+            className={`sim-btn ${velocity === 2200 ? "active" : ""}`}
+            onClick={() => handleVelocityChange(2200)}
+            style={{ padding: "4px 8px", fontSize: "0.72rem" }}
+          >
+            Slow
+          </button>
+          <button
+            className={`sim-btn ${velocity === 1200 ? "active" : ""}`}
+            onClick={() => handleVelocityChange(1200)}
+            style={{ padding: "4px 8px", fontSize: "0.72rem" }}
+          >
+            Normal
+          </button>
+          <button
+            className={`sim-btn ${velocity === 450 ? "active" : ""}`}
+            onClick={() => handleVelocityChange(450)}
+            style={{ padding: "4px 8px", fontSize: "0.72rem", color: "var(--accent-rose)" }}
+          >
+            🔥 Raid
+          </button>
+        </div>
+      )}
 
       {/* Live Custom Message Injector */}
       <form onSubmit={handleInjectSubmit} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -135,10 +163,10 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
             color: "#FFF",
             fontSize: "0.78rem",
             outline: "none",
-            width: "180px"
+            width: "160px"
           }}
         />
-        <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "0.72rem", color: "var(--text-secondary)", cursor: "pointer" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "0.72rem", color: "var(--text-secondary)", cursor: "pointer" }}>
           <input
             type="checkbox"
             checked={isFirstTimerCheck}
@@ -156,7 +184,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
         <input
           type="text"
           id="input-twitch-channel"
-          placeholder="Twitch Channel..."
+          placeholder="Any Twitch channel..."
           value={channelInput}
           onChange={(e) => setChannelInput(e.target.value)}
           style={{

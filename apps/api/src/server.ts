@@ -136,12 +136,14 @@ wss.on("connection", (ws: WebSocket) => {
         }
 
         case "TRIGGER_SCENARIO": {
+          twitchIrc.disconnect();
           simulator.start(action.scenario, 1100);
           break;
         }
 
         case "TOGGLE_SIMULATOR": {
           if (action.enabled) {
+            twitchIrc.disconnect();
             simulator.start("boss_fight", 1200);
           } else {
             simulator.stop();
@@ -166,7 +168,7 @@ wss.on("connection", (ws: WebSocket) => {
             isFirstTimer: Boolean(action.isFirstTimer),
             isSubscriber: false,
             isMod: false,
-            channel: "demo_streamer"
+            channel: twitchIrc.getStatus().channel || "demo_streamer"
           });
           break;
         }
@@ -204,6 +206,7 @@ app.get("/api/snapshot", (req, res) => {
 });
 
 app.post("/api/simulator/start", (req, res) => {
+  twitchIrc.disconnect();
   const scenario = req.body?.scenario || "boss_fight";
   const interval = req.body?.interval || 1200;
   simulator.start(scenario, interval);
@@ -220,8 +223,20 @@ app.post("/api/twitch/connect", (req, res) => {
   if (!channel) {
     return res.status(400).json({ error: "channel is required" });
   }
+
+  // Seamlessly switch to Real-Time Live Twitch stream
+  console.log(`[Real-Time Twitch] Switching to live channel: #${channel}`);
+  simulator.stop();
+  clusterManager.clearSignals();
   twitchIrc.connect(channel);
-  res.json({ success: true, channel });
+  broadcastSnapshot();
+
+  res.json({
+    success: true,
+    channel,
+    mode: "REALTIME_TWITCH_LIVE",
+    message: `Now listening in real time to live Twitch chat on #${channel}`
+  });
 });
 
 app.post("/api/twitch/disconnect", (req, res) => {
