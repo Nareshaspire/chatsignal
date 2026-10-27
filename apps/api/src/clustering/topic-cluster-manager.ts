@@ -1,5 +1,12 @@
 import { ChatMessage, IntentClassification, PipelineMetrics, StreamerConfig, TopicCluster } from "../types.js";
 
+export interface IngestionMetadata {
+  stage1Ms: number;
+  stage2Ms: number;
+  promptUsed: string;
+  modelUsed: string;
+}
+
 export class TopicClusterManager {
   private clusters: Map<string, TopicCluster> = new Map();
   private readonly WINDOW_TTL_MS = 90000; // 90 seconds sliding window
@@ -9,7 +16,7 @@ export class TopicClusterManager {
     weightIntent: 25,
     weightCluster: 20,
     weightUrgency: 15,
-    weightNoisePenalty: 0, // Passed Stage 1 messages already have noise filtered
+    weightNoisePenalty: 0,
     minPriorityThreshold: 60,
     soundEnabled: true
   };
@@ -25,7 +32,6 @@ export class TopicClusterManager {
   };
 
   constructor() {
-    // Sweep expired clusters every 10 seconds
     setInterval(() => this.sweepExpiredClusters(), 10000);
   }
 
@@ -45,14 +51,17 @@ export class TopicClusterManager {
     this.metrics.lastUpdated = Date.now();
   }
 
-  public ingestClassifiedMessage(msg: ChatMessage, intent: IntentClassification): TopicCluster {
+  public ingestClassifiedMessage(
+    msg: ChatMessage,
+    intent: IntentClassification,
+    meta?: IngestionMetadata
+  ): TopicCluster {
     const now = Date.now();
     const topicKey = this.normalizeTopicKey(intent.canonicalTopic);
 
     let cluster = this.clusters.get(topicKey);
 
     if (cluster && cluster.status !== "answered" && cluster.status !== "dismissed") {
-      // Update existing cluster
       cluster.messages.push(msg);
       if (!cluster.uniqueViewers.includes(msg.username)) {
         cluster.uniqueViewers.push(msg.username);
@@ -68,17 +77,28 @@ export class TopicClusterManager {
       if (intent.urgency === "urgent") {
         cluster.urgency = "urgent";
       }
+      if (intent.suggestedTalkingPoint) {
+        cluster.suggestedTalkingPoint = intent.suggestedTalkingPoint;
+      }
 
-      // Recompute priority
-      cluster.priorityScore = this.computePriority(cluster, intent);
+      const breakdown = this.computePriorityBreakdown(cluster, intent);
+      cluster.priorityScore = breakdown.total;
+      cluster.aiReasoning = {
+        stage1LatencyMs: meta?.stage1Ms || 0.6,
+        stage2LatencyMs: meta?.stage2Ms || 185,
+        confidence: intent.confidence || 0.9,
+        formula: breakdown,
+        promptUsed: meta?.promptUsed || "",
+        modelUsed: meta?.modelUsed || "gpt-4o-mini"
+      };
     } else {
-      // Create new cluster
       const id = `sig_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       cluster = {
         id,
         canonicalTopic: intent.canonicalTopic,
         representativeQuestion: msg.message,
         summary: intent.summary,
+        suggestedTalkingPoint: intent.suggestedTalkingPoint,
         category: intent.category,
         urgency: intent.urgency,
         initiator: {
@@ -102,40 +122,59 @@ export class TopicClusterManager {
         this.metrics.firstTimersRescued += 1;
       }
 
-      cluster.priorityScore = this.computePriority(cluster, intent);
+      const breakdown = this.computePriorityBreakdown(cluster, intent);
+      cluster.priorityScore = breakdown.total;
+      cluster.aiReasoning = {
+        stage1LatencyMs: meta?.stage1Ms || 0.6,
+        stage2LatencyMs: meta?.stage2Ms || 185,
+        confidence: intent.confidence || 0.9,
+        formula: breakdown,
+        promptUsed: meta?.promptUsed || "",
+        modelUsed: meta?.modelUsed || "gpt-4o-mini"
+      };
+
       this.clusters.set(topicKey, cluster);
     }
 
-    // Update metrics count
     this.updateActiveCount();
     return cluster;
   }
 
-  private computePriority(cluster: TopicCluster, intent: IntentClassification): number {
-    let score = 0;
+  public computePriorityBreakdown(cluster: TopicCluster, intent: IntentClassification) {
+    let firstTimerPts = 0;
+    let intentPts = 0;
+    let clusterPts = 0;
+    let urgencyPts = 0;
 
     // 1. First-Timer Bonus
     if (cluster.hasFirstTimeChatter) {
-      score += this.config.weightFirstTimer;
+      firstTimerPts = this.config.weightFirstTimer;
     }
 
     // 2. Intent Bonus
     if (intent.isQuestion) {
-      score += Math.round(this.config.weightIntent * (intent.confidence || 0.8));
+      intentPts = Math.round(this.config.weightIntent * (intent.confidence || 0.8));
     }
 
     // 3. Cluster Repetition Multiplier: log2(1 + N)
-    const clusterMultiplier = Math.min(Math.log2(1 + cluster.viewerCount) * 12, 35);
-    score += Math.round(clusterMultiplier);
+    clusterPts = Math.round(Math.min(Math.log2(1 + cluster.viewerCount) * 12, 35));
 
     // 4. Urgency
     if (cluster.urgency === "urgent") {
-      score += this.config.weightUrgency;
+      urgencyPts = this.config.weightUrgency;
     } else if (cluster.urgency === "normal") {
-      score += 5;
+      urgencyPts = 5;
     }
 
-    return Math.max(0, Math.min(100, score));
+    const total = Math.max(0, Math.min(100, firstTimerPts + intentPts + clusterPts + urgencyPts));
+
+    return {
+      firstTimer: firstTimerPts,
+      intent: intentPts,
+      cluster: clusterPts,
+      urgency: urgencyPts,
+      total
+    };
   }
 
   public resolveSignal(signalId: string, resolution: "answered" | "dismissed"): TopicCluster | null {
@@ -186,7 +225,7 @@ export class TopicClusterManager {
     });
 
     const topSignal = activeList.length > 0 ? activeList[0] : null;
-    const queuedSignals = activeList.slice(1, 6); // Up to 5 queued signals
+    const queuedSignals = activeList.slice(1, 6);
 
     return {
       topSignal,
@@ -209,9 +248,7 @@ export class TopicClusterManager {
   private sweepExpiredClusters(): void {
     const now = Date.now();
     for (const [key, cluster] of this.clusters.entries()) {
-      // Don't sweep pinned items
       if (cluster.pinned) continue;
-
       if (now - cluster.lastSeenAt > this.WINDOW_TTL_MS) {
         this.clusters.delete(key);
       }

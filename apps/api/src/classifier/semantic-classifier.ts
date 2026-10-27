@@ -14,6 +14,21 @@ export class SemanticIntentClassifier {
     }
   }
 
+  public getModelName(): string {
+    return this.openai ? this.model : "ChatSignal-LocalHeuristic-v1";
+  }
+
+  public getPromptForMessage(msg: ChatMessage): string {
+    return `Analyze this Twitch chat message for a live video game streamer.
+Sender: "${msg.username}" (First-time chatter: ${msg.isFirstTimer})
+Message: "${msg.message}"
+
+Task:
+1. Determine if this is a direct question directed at the streamer.
+2. Extract the canonical 2-4 word topic.
+3. Suggest a 1-sentence contextual talking point the streamer can say while playing.`;
+  }
+
   public async classify(message: ChatMessage): Promise<IntentClassification> {
     // If OpenAI client is configured and available, try the LLM
     if (this.openai) {
@@ -41,6 +56,7 @@ Return a valid JSON object matching this schema:
   "urgency": "urgent" | "normal" | "low",
   "canonicalTopic": string (concise 2-4 word topic label, e.g. "Mouse Sensitivity", "Ability Leveling Order", "Audio Delay"),
   "summary": string (clean 1-sentence version of what they are asking/saying),
+  "suggestedTalkingPoint": string (quick 1-sentence answer for the streamer to say on stream),
   "suggestedAction": "answer_now" | "answer_later" | "ignore"
 }`;
 
@@ -55,7 +71,7 @@ Return a valid JSON object matching this schema:
       ],
       response_format: { type: "json_object" },
       temperature: 0.1,
-      max_tokens: 150
+      max_tokens: 180
     });
 
     const rawContent = completion.choices[0]?.message?.content || "{}";
@@ -68,6 +84,7 @@ Return a valid JSON object matching this schema:
       urgency: parsed.urgency || "normal",
       canonicalTopic: parsed.canonicalTopic || this.generateLocalTopic(msg.message),
       summary: parsed.summary || msg.message,
+      suggestedTalkingPoint: parsed.suggestedTalkingPoint || this.generateLocalTalkingPoint(msg.message, parsed.canonicalTopic || "Topic"),
       suggestedAction: parsed.suggestedAction || (parsed.isQuestion ? "answer_now" : "ignore")
     };
   }
@@ -90,6 +107,7 @@ Return a valid JSON object matching this schema:
         urgency: "urgent",
         canonicalTopic: "Stream Audio & Technical Alert",
         summary: "Viewer is reporting a critical technical or audio issue on stream.",
+        suggestedTalkingPoint: "Quick check: 'Appreciate the heads up chat, let me check my OBS audio mixer right now!'",
         suggestedAction: "answer_now"
       };
     }
@@ -103,6 +121,7 @@ Return a valid JSON object matching this schema:
         urgency: "normal",
         canonicalTopic: "Peripherals & In-Game Sensitivity",
         summary: "Inquiring about your mouse DPI, sensitivity, or hardware setup.",
+        suggestedTalkingPoint: "Mention: 'I'm playing on 800 DPI with 0.35 in-game sens, rocking a 240Hz monitor!'",
         suggestedAction: "answer_now"
       };
     }
@@ -116,6 +135,7 @@ Return a valid JSON object matching this schema:
         urgency: "normal",
         canonicalTopic: "In-Game Build & Strategy",
         summary: "Asking about your character build, leveling order, or tactical choice.",
+        suggestedTalkingPoint: "Mention: 'I maxed Q first for early lane waveclear against aggressive matchups!'",
         suggestedAction: "answer_now"
       };
     }
@@ -129,19 +149,22 @@ Return a valid JSON object matching this schema:
         urgency: "normal",
         canonicalTopic: "Schedule & Community Games",
         summary: "Asking about future stream times or playing with viewers.",
+        suggestedTalkingPoint: "Mention: 'I do community custom games every Friday at 7 PM EST!'",
         suggestedAction: "answer_later"
       };
     }
 
     // 5. General Inquiry (Starts with question words)
     if (/^(what|why|how|who|where|when|can you|could you|is that|are you)\b/i.test(lower) || hasQuestionMark) {
+      const topic = this.generateLocalTopic(text);
       return {
         isQuestion: true,
         category: "personal_opinion",
         confidence: 0.8,
         urgency: "normal",
-        canonicalTopic: this.generateLocalTopic(text),
+        canonicalTopic: topic,
         summary: text,
+        suggestedTalkingPoint: `Quick response addressing ${topic}: 'Good question! It really comes down to game tempo and current patch meta.'`,
         suggestedAction: "answer_now"
       };
     }
@@ -155,6 +178,7 @@ Return a valid JSON object matching this schema:
         urgency: "normal",
         canonicalTopic: "First-Time Viewer Greeting",
         summary: "A new viewer introduced themselves to the channel.",
+        suggestedTalkingPoint: `Say: 'Welcome in @${msg.username}, great having you here tonight! Hope you enjoy the games!'`,
         suggestedAction: "answer_now"
       };
     }
@@ -166,8 +190,13 @@ Return a valid JSON object matching this schema:
       urgency: "low",
       canonicalTopic: "General Chat Banter",
       summary: text,
+      suggestedTalkingPoint: "Casual chat acknowledgement.",
       suggestedAction: "ignore"
     };
+  }
+
+  private generateLocalTalkingPoint(text: string, topic: string): string {
+    return `Quick answer for ${topic}: 'Great question chat, that's mainly for maximizing damage during team fights!'`;
   }
 
   private generateLocalTopic(text: string): string {

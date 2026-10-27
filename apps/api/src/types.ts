@@ -36,16 +36,33 @@ export interface IntentClassification {
   urgency: "urgent" | "normal" | "low";
   canonicalTopic: string;
   summary: string;
+  suggestedTalkingPoint: string;
   suggestedAction: "answer_now" | "answer_later" | "ignore";
 }
 
 export type SignalStatus = "active" | "queued" | "answered" | "dismissed" | "pinned" | "expired";
+
+export interface AiReasoningLog {
+  stage1LatencyMs: number;
+  stage2LatencyMs: number;
+  confidence: number;
+  formula: {
+    firstTimer: number;
+    intent: number;
+    cluster: number;
+    urgency: number;
+    total: number;
+  };
+  promptUsed: string;
+  modelUsed: string;
+}
 
 export interface TopicCluster {
   id: string;
   canonicalTopic: string;
   representativeQuestion: string;
   summary: string;
+  suggestedTalkingPoint: string;
   category: string;
   urgency: "urgent" | "normal" | "low";
   initiator: {
@@ -64,6 +81,7 @@ export interface TopicCluster {
   status: SignalStatus;
   pinned: boolean;
   resolvedAt?: number;
+  aiReasoning?: AiReasoningLog;
 }
 
 export interface PipelineMetrics {
@@ -91,6 +109,8 @@ export type WSClientAction =
   | { type: "PIN_SIGNAL"; signalId: string; pinned: boolean }
   | { type: "TRIGGER_SCENARIO"; scenario: "boss_fight" | "raid_influx" | "technical_alert" | "chill_qna" }
   | { type: "TOGGLE_SIMULATOR"; enabled: boolean }
+  | { type: "SET_VELOCITY"; intervalMs: number }
+  | { type: "INJECT_MESSAGE"; message: string; isFirstTimer?: boolean }
   | { type: "CLEAR_SIGNALS" };
 
 export type WSServerEvent =

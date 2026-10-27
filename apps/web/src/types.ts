@@ -20,11 +20,27 @@ export type FilterVerdict =
   | "DROP_COPYPASTA"
   | "DROP_BLOCKED_SLUR";
 
+export interface AiReasoningLog {
+  stage1LatencyMs: number;
+  stage2LatencyMs: number;
+  confidence: number;
+  formula: {
+    firstTimer: number;
+    intent: number;
+    cluster: number;
+    urgency: number;
+    total: number;
+  };
+  promptUsed: string;
+  modelUsed: string;
+}
+
 export interface TopicCluster {
   id: string;
   canonicalTopic: string;
   representativeQuestion: string;
   summary: string;
+  suggestedTalkingPoint: string;
   category: string;
   urgency: "urgent" | "normal" | "low";
   initiator: {
@@ -42,6 +58,7 @@ export interface TopicCluster {
   priorityScore: number;
   status: "active" | "queued" | "answered" | "dismissed" | "pinned" | "expired";
   pinned: boolean;
+  aiReasoning?: AiReasoningLog;
 }
 
 export interface PipelineMetrics {

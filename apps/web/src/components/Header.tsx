@@ -6,9 +6,19 @@ interface HeaderProps {
   isConnected: boolean;
   metrics: PipelineMetrics;
   activeChannel: string;
+  isDockMode: boolean;
+  onToggleDockMode: () => void;
+  onOpenRecap: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ isConnected, metrics, activeChannel }) => {
+export const Header: React.FC<HeaderProps> = ({
+  isConnected,
+  metrics,
+  activeChannel,
+  isDockMode,
+  onToggleDockMode,
+  onOpenRecap
+}) => {
   const [muted, setMuted] = useState(soundNotifier.getIsMuted());
 
   const toggleSound = () => {
@@ -47,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({ isConnected, metrics, activeChan
           <span>{isConnected ? `STREAM: ${activeChannel.toUpperCase()}` : "DISCONNECTED"}</span>
         </div>
 
-        <div className="metric-pill" id="metric-noise-pill" title="Percentage of spam, emote floods, and copypasta dropped before the streamer sees it">
+        <div className="metric-pill" id="metric-noise-pill" title="Percentage of spam, emote floods, and copypasta dropped">
           <span>NOISE DROP:</span>
           <strong>{metrics.noiseDropRatePercent || 0}%</strong>
         </div>
@@ -57,6 +67,29 @@ export const Header: React.FC<HeaderProps> = ({ isConnected, metrics, activeChan
           <strong style={{ color: "#34D399" }}>{metrics.firstTimersRescued}</strong>
         </div>
 
+        {/* Session Intelligence Modal Trigger */}
+        <button
+          className="btn btn-secondary"
+          id="btn-session-recap"
+          onClick={onOpenRecap}
+          style={{ padding: "6px 12px", fontSize: "0.78rem" }}
+          title="View Session Community Intelligence & Retention Report"
+        >
+          <span>📊 Intelligence Recap</span>
+        </button>
+
+        {/* OBS Dock Mode Toggle */}
+        <button
+          className={`btn ${isDockMode ? "btn-primary" : "btn-secondary"}`}
+          id="btn-toggle-dock"
+          onClick={onToggleDockMode}
+          style={{ padding: "6px 12px", fontSize: "0.78rem" }}
+          title={isDockMode ? "Switch to Full Radar Dashboard" : "Switch to Compact OBS Studio Dock View"}
+        >
+          <span>{isDockMode ? "⛶ Full Dashboard" : "⛶ OBS Dock View"}</span>
+        </button>
+
+        {/* Sound Chime Toggle */}
         <button
           className="btn btn-ghost"
           id="sound-toggle-btn"

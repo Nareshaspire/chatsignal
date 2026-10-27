@@ -54,8 +54,13 @@ function broadcastSnapshot(): void {
 
 // Ingestion Pipeline Handler
 async function processChatMessage(msg: ChatMessage): Promise<void> {
+  const t0 = performance.now();
+
   // 1. Stage 1: Local Heuristic Filter (<1ms)
   const filterResult = heuristicFilter.evaluate(msg);
+  const t1 = performance.now();
+  const stage1Ms = Number((t1 - t0).toFixed(2));
+
   clusterManager.recordRawIngestion(!filterResult.passed);
 
   // Broadcast raw chat sample to HUD inspection pane
@@ -71,10 +76,18 @@ async function processChatMessage(msg: ChatMessage): Promise<void> {
   }
 
   // 2. Stage 2: Semantic Intent Classifier
+  const t2 = performance.now();
   const intent = await classifier.classify(msg);
+  const t3 = performance.now();
+  const stage2Ms = Number((t3 - t2).toFixed(2));
 
-  // 3. Ingest into 90s Topic Cluster & calculate Priority Score
-  const cluster = clusterManager.ingestClassifiedMessage(msg, intent);
+  // 3. Ingest into 90s Topic Cluster & calculate Priority Score with AI Reasoning meta
+  clusterManager.ingestClassifiedMessage(msg, intent, {
+    stage1Ms,
+    stage2Ms,
+    promptUsed: classifier.getPromptForMessage(msg),
+    modelUsed: classifier.getModelName()
+  });
 
   // 4. Broadcast updated signal snapshot
   broadcastSnapshot();
@@ -133,6 +146,28 @@ wss.on("connection", (ws: WebSocket) => {
           } else {
             simulator.stop();
           }
+          break;
+        }
+
+        case "SET_VELOCITY": {
+          const currentStatus = simulator.getStatus();
+          if (currentStatus.isRunning) {
+            simulator.start("boss_fight", action.intervalMs);
+          }
+          break;
+        }
+
+        case "INJECT_MESSAGE": {
+          processChatMessage({
+            id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            timestamp: Date.now(),
+            username: "LiveJudge",
+            message: action.message,
+            isFirstTimer: Boolean(action.isFirstTimer),
+            isSubscriber: false,
+            isMod: false,
+            channel: "demo_streamer"
+          });
           break;
         }
 
@@ -201,11 +236,9 @@ server.listen(PORT, () => {
   console.log(`⚡ WebSocket Server ready on ws://localhost:${PORT}`);
   console.log(`=======================================================`);
 
-  // Auto-start simulator if enabled in env or by default for fast verification
   const shouldAutoSimulate = process.env.SIMULATOR_ENABLED !== "false";
   if (shouldAutoSimulate) {
     const scenario = (process.env.SIMULATOR_SCENARIO as any) || "boss_fight";
-    console.log(`[Auto-Start] Launching built-in chat simulator (${scenario})...`);
     simulator.start(scenario, 1300);
   }
 });

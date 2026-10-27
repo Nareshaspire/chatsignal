@@ -4,6 +4,8 @@ import { TopSignalCard } from "./components/TopSignalCard";
 import { QueuedSignalsList } from "./components/QueuedSignalsList";
 import { RawChatStream } from "./components/RawChatStream";
 import { SimulationControls } from "./components/SimulationControls";
+import { AiInspectorModal } from "./components/AiInspectorModal";
+import { SessionRecapModal } from "./components/SessionRecapModal";
 import { TopicCluster, PipelineMetrics, RawChatLogEntry } from "./types";
 import { soundNotifier } from "./utils/audio";
 
@@ -16,6 +18,10 @@ export const App: React.FC = () => {
   const [queuedSignals, setQueuedSignals] = useState<TopicCluster[]>([]);
   const [rawLogs, setRawLogs] = useState<RawChatLogEntry[]>([]);
   const [activeChannel, setActiveChannel] = useState("SIMULATOR");
+  const [isDockMode, setIsDockMode] = useState(false);
+  const [selectedInspectorSignal, setSelectedInspectorSignal] = useState<TopicCluster | null>(null);
+  const [showRecapModal, setShowRecapModal] = useState(false);
+
   const [metrics, setMetrics] = useState<PipelineMetrics>({
     totalIngested: 0,
     droppedByStage1: 0,
@@ -50,6 +56,16 @@ export const App: React.FC = () => {
   const handleTriggerScenario = (scenario: "boss_fight" | "raid_influx" | "technical_alert" | "chill_qna") => {
     setActiveChannel(`SIM: ${scenario.toUpperCase()}`);
     sendWsAction({ type: "TRIGGER_SCENARIO", scenario });
+  };
+
+  // Handle Custom Message Injection
+  const handleInjectMessage = (message: string, isFirstTimer: boolean) => {
+    sendWsAction({ type: "INJECT_MESSAGE", message, isFirstTimer });
+  };
+
+  // Handle Velocity Adjustment
+  const handleSetVelocity = (intervalMs: number) => {
+    sendWsAction({ type: "SET_VELOCITY", intervalMs });
   };
 
   // Handle Twitch Connection
@@ -103,7 +119,7 @@ export const App: React.FC = () => {
           } else if (data.type === "RAW_CHAT_SAMPLE") {
             setRawLogs((prev) => {
               const updated = [...prev, { message: data.message, verdict: data.verdict, receivedAt: Date.now() }];
-              return updated.slice(-60); // keep last 60
+              return updated.slice(-60);
             });
           }
         } catch (err) {
@@ -131,10 +147,16 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Global Keyboard Shortcuts (Space to Answer, D to Dismiss, P to Pin)
+  // Global Keyboard Shortcuts (Space to Answer, D to Dismiss, P to Pin, Esc to close modals)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is currently typing in an input or textarea
+      if (e.key === "Escape") {
+        setSelectedInspectorSignal(null);
+        setShowRecapModal(false);
+        return;
+      }
+
+      // Ignore hotkeys if user is currently typing in an input
       const target = e.target as HTMLElement;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) {
         return;
@@ -159,11 +181,14 @@ export const App: React.FC = () => {
   }, [topSignal, handleResolveSignal, handlePinSignal]);
 
   return (
-    <div className="app-container" id="chatsignal-app">
+    <div className={`app-container ${isDockMode ? "dock-mode" : ""}`} id="chatsignal-app">
       <Header
         isConnected={isConnected}
         metrics={metrics}
         activeChannel={activeChannel}
+        isDockMode={isDockMode}
+        onToggleDockMode={() => setIsDockMode((prev) => !prev)}
+        onOpenRecap={() => setShowRecapModal(true)}
       />
 
       <main className="main-grid">
@@ -172,6 +197,7 @@ export const App: React.FC = () => {
             signal={topSignal}
             onResolve={handleResolveSignal}
             onPin={handlePinSignal}
+            onInspectAi={(sig) => setSelectedInspectorSignal(sig)}
           />
 
           <QueuedSignalsList
@@ -184,15 +210,36 @@ export const App: React.FC = () => {
             onTriggerScenario={handleTriggerScenario}
             onConnectTwitch={handleConnectTwitch}
             onClear={handleClear}
+            onInjectMessage={handleInjectMessage}
+            onSetVelocity={handleSetVelocity}
             activeChannel={activeChannel}
           />
         </section>
 
-        <RawChatStream
-          logs={rawLogs}
-          metrics={metrics}
-        />
+        {!isDockMode && (
+          <RawChatStream
+            logs={rawLogs}
+            metrics={metrics}
+          />
+        )}
       </main>
+
+      {/* AI Inspector Modal */}
+      {selectedInspectorSignal && (
+        <AiInspectorModal
+          signal={selectedInspectorSignal}
+          onClose={() => setSelectedInspectorSignal(null)}
+        />
+      )}
+
+      {/* Session Intelligence Recap Modal */}
+      {showRecapModal && (
+        <SessionRecapModal
+          metrics={metrics}
+          queuedSignals={queuedSignals}
+          onClose={() => setShowRecapModal(false)}
+        />
+      )}
     </div>
   );
 };

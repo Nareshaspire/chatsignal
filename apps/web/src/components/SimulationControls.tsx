@@ -4,6 +4,8 @@ interface SimulationControlsProps {
   onTriggerScenario: (scenario: "boss_fight" | "raid_influx" | "technical_alert" | "chill_qna") => void;
   onConnectTwitch: (channel: string) => void;
   onClear: () => void;
+  onInjectMessage: (message: string, isFirstTimer: boolean) => void;
+  onSetVelocity: (intervalMs: number) => void;
   activeChannel: string;
 }
 
@@ -11,9 +13,14 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
   onTriggerScenario,
   onConnectTwitch,
   onClear,
+  onInjectMessage,
+  onSetVelocity,
   activeChannel
 }) => {
   const [channelInput, setChannelInput] = useState("");
+  const [customMsg, setCustomMsg] = useState("");
+  const [isFirstTimerCheck, setIsFirstTimerCheck] = useState(true);
+  const [velocity, setVelocity] = useState<number>(1200);
 
   const handleTwitchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,8 +30,22 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
     }
   };
 
+  const handleInjectSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (customMsg.trim()) {
+      onInjectMessage(customMsg.trim(), isFirstTimerCheck);
+      setCustomMsg("");
+    }
+  };
+
+  const handleVelocityChange = (ms: number) => {
+    setVelocity(ms);
+    onSetVelocity(ms);
+  };
+
   return (
     <div className="sim-bar" id="simulation-controls-bar">
+      {/* Scenario Triggers */}
       <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
         <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-secondary)" }}>
           DEMO SCENARIOS ({activeChannel})
@@ -72,6 +93,65 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
         </button>
       </div>
 
+      {/* Chat Velocity Selector */}
+      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>SPEED:</span>
+        <button
+          className={`sim-btn ${velocity === 2200 ? "active" : ""}`}
+          onClick={() => handleVelocityChange(2200)}
+          style={{ padding: "4px 8px", fontSize: "0.72rem" }}
+        >
+          Slow
+        </button>
+        <button
+          className={`sim-btn ${velocity === 1200 ? "active" : ""}`}
+          onClick={() => handleVelocityChange(1200)}
+          style={{ padding: "4px 8px", fontSize: "0.72rem" }}
+        >
+          Normal
+        </button>
+        <button
+          className={`sim-btn ${velocity === 450 ? "active" : ""}`}
+          onClick={() => handleVelocityChange(450)}
+          style={{ padding: "4px 8px", fontSize: "0.72rem", color: "var(--accent-rose)" }}
+        >
+          🔥 Raid Speed
+        </button>
+      </div>
+
+      {/* Live Custom Message Injector */}
+      <form onSubmit={handleInjectSubmit} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <input
+          type="text"
+          id="input-custom-message"
+          placeholder="Test custom chat message..."
+          value={customMsg}
+          onChange={(e) => setCustomMsg(e.target.value)}
+          style={{
+            background: "rgba(0, 0, 0, 0.4)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-sm)",
+            padding: "5px 10px",
+            color: "#FFF",
+            fontSize: "0.78rem",
+            outline: "none",
+            width: "180px"
+          }}
+        />
+        <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "0.72rem", color: "var(--text-secondary)", cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={isFirstTimerCheck}
+            onChange={(e) => setIsFirstTimerCheck(e.target.checked)}
+          />
+          New?
+        </label>
+        <button type="submit" className="sim-btn" style={{ background: "rgba(0, 242, 254, 0.2)", color: "var(--accent-cyan)" }}>
+          Send
+        </button>
+      </form>
+
+      {/* Twitch Channel Input */}
       <form onSubmit={handleTwitchSubmit} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
         <input
           type="text"
@@ -87,7 +167,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
             color: "#FFF",
             fontSize: "0.78rem",
             outline: "none",
-            width: "130px"
+            width: "115px"
           }}
         />
         <button type="submit" className="sim-btn" style={{ background: "rgba(157, 78, 221, 0.2)" }}>
